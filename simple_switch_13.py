@@ -109,7 +109,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         else:
             out_port = ofproto.OFPP_FLOOD
 
-        # Uses a group table to 
+        # Uses a group table to forward etherent packet 
         group_id = 1
         actions = [parser.OFPActionGroup(group_id)]
         group_action = [parser.OFPActionOutput(out_port)]
