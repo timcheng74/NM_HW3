@@ -199,7 +199,7 @@ class dhcp_server(app_manager.RyuApp):
             pkt.add_protocol(pkt_dhcp)
             self._send_packet(datapath, in_port, pkt)
 
-            # install flow table 3
+            # install flow table 0
             cookie = 0
             cookie_mask = 0
             table_id = 0
@@ -219,7 +219,7 @@ class dhcp_server(app_manager.RyuApp):
                                     instructions = instruction)
             datapath.send_msg(req)
 
-            # insatll flow table 0
+            # insatll flow table 3
             table_id = 3
             priority = 3000
             instruction = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, [])]
