@@ -42,18 +42,13 @@ class dhcp_server(app_manager.RyuApp):
         parser = datapath.ofproto_parser
 
         # install table-miss flow entry
-        #
-        # We specify NO BUFFER to max_len of the output action due to
-        # OVS bug. At this moment, if we specify a lesser number, e.g.,
-        # 128, OVS will send Packet-In with invalid buffer_id and
-        # truncated packet data. In that case, we cannot output packets
-        # correctly.  The bug has been fixed in OVS v2.1.0.
         req = parser.OFPSetConfig(datapath, ofproto.OFPC_FRAG_NORMAL, 512)
         datapath.send_msg(req)        
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,512)]
         self.add_flow(datapath, 0, match, actions)
 
+        # send flow rule message to ovs
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -82,6 +77,7 @@ class dhcp_server(app_manager.RyuApp):
         parser = datapath.ofproto_parser
         in_port = msg.match['in_port']
 
+        # get ethernet and dhcp parser
         pkt = packet.Packet(msg.data)
         pkt_dhcp = pkt.get_protocol(dhcp.dhcp)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
@@ -147,13 +143,16 @@ class dhcp_server(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
+        # the message is DHCP_ DISCOVERY
         if dhcp_type == 1:
             self.logger.info("Recieve DHCP_DISCOVERY")
             dhcp_offer = '\x02'
             self.logger.info("Send DHCP_OFFER")
             msg_option = dhcp.option(tag = 53, value = dhcp_offer)
             options = dhcp.options(option_list=[msg_option])
+            # allocate ip to host
             yiaddr = self.ip_pool[0]
+            # generate the DHCP_OFFER packet
             pkt_dhcp = dhcp.dhcp(op=2,
                                  chaddr=pkt_dhcp.chaddr, 
                                  options=options,
@@ -168,16 +167,23 @@ class dhcp_server(app_manager.RyuApp):
             pkt.add_protocol(udp.udp(src_port=67, dst_port=68))
             pkt.add_protocol(pkt_dhcp)
             self._send_packet(datapath, in_port, pkt)
+
+        # the message is DHCP_REQUEST
         if dhcp_type == 3:
             self.logger.info("Recieve DHCP_REQUEST")
             dhcp_ack = '\x05'
             self.logger.info("Send DHCP_ACK")
+            # set packet type
             msg_option = dhcp.option(tag = 53, value = dhcp_ack)
+            # set dhcp valid time
             time_option = dhcp.option(tag = 51, value = '\x00\xFF\xFF\xFF')
+            # set net mask
             mask_option = dhcp.option(tag = 1, value = self.netmask)
             options = dhcp.options(option_list=[msg_option, time_option, mask_option])
             yiaddr = self.ip_pool[0]
+            # delete the used ip
             self.ip_pool.pop(0)
+            # generate the DHCP_ACK
             pkt_dhcp = dhcp.dhcp(op=5,
                          chaddr=pkt_dhcp.chaddr,
                          options=options,
@@ -193,7 +199,7 @@ class dhcp_server(app_manager.RyuApp):
             pkt.add_protocol(pkt_dhcp)
             self._send_packet(datapath, in_port, pkt)
 
-            # install flow table 1
+            # install flow table 3
             cookie = 0
             cookie_mask = 0
             table_id = 0
@@ -212,6 +218,8 @@ class dhcp_server(app_manager.RyuApp):
                                     match = match,
                                     instructions = instruction)
             datapath.send_msg(req)
+
+            # insatll flow table 0
             table_id = 3
             priority = 3000
             instruction = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, [])]
