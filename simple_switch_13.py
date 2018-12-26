@@ -24,16 +24,17 @@ from ryu.lib.packet import ether_types
 from ryu.lib import addrconv
 
 
-
-class SimpleSwitch13(app_manager.RyuApp):
+class dhcp_server(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
-        super(SimpleSwitch13, self).__init__(*args, **kwargs)
+        super(dhcp_server, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
         self.hw_addr='00:00:00:00:00:10'
         self.ip = '10.0.0.100'
-    
+        self.netmask = addrconv.ipv4.text_to_bin('255.255.255.0')
+        self.ip_pool=['10.0.0.1','10.0.0.2','10.0.0.3']
+
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -152,7 +153,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             self.logger.info("Send DHCP_OFFER")
             msg_option = dhcp.option(tag = 53, value = dhcp_offer)
             options = dhcp.options(option_list=[msg_option])
-        
+            yiaddr = self.ip_pool[0]
             pkt_dhcp = dhcp.dhcp(op=2,
                                  chaddr=pkt_dhcp.chaddr, 
                                  options=options,
@@ -160,7 +161,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                                  htype=1,
                                  xid=pkt_dhcp.xid,
                                  ciaddr=pkt_dhcp.ciaddr,
-                                 yiaddr='10.0.1.1')
+                                 yiaddr=yiaddr)
             pkt = packet.Packet()
             pkt.add_protocol(ethernet.ethernet(src=self.hw_addr, dst="ff:ff:ff:ff:ff:ff"))
             pkt.add_protocol(ipv4.ipv4(src=self.ip, dst="255.255.255.255", proto=17))
@@ -173,7 +174,10 @@ class SimpleSwitch13(app_manager.RyuApp):
             self.logger.info("Send DHCP_ACK")
             msg_option = dhcp.option(tag = 53, value = dhcp_ack)
             time_option = dhcp.option(tag = 51, value = '\x00\xFF\xFF\xFF')
-            options = dhcp.options(option_list=[msg_option, time_option])
+            mask_option = dhcp.option(tag = 1, value = self.netmask)
+            options = dhcp.options(option_list=[msg_option, time_option, mask_option])
+            yiaddr = self.ip_pool[0]
+            self.ip_pool.pop(0)
             pkt_dhcp = dhcp.dhcp(op=5,
                          chaddr=pkt_dhcp.chaddr,
                          options=options,
@@ -181,7 +185,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                          htype=1,
                          xid=pkt_dhcp.xid,
                          ciaddr=pkt_dhcp.ciaddr,
-                         yiaddr='10.0.1.1')
+                         yiaddr=yiaddr)
             pkt = packet.Packet()
             pkt.add_protocol(ethernet.ethernet(src=self.hw_addr, dst="ff:ff:ff:ff:ff:ff"))
             pkt.add_protocol(ipv4.ipv4(src=self.ip, dst="255.255.255.255", proto=17))
